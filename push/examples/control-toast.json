@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "kind": "control",
+  "control": {
+    "action": "notify",
+    "level": "info",
+    "message": "Neue Ansicht vom Chief of Staff",
+    "durationMs": 5000
+  }
+}
