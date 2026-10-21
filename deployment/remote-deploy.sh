@@ -39,9 +39,29 @@ if [[ -z "$COMMAND_CENTER_IMAGE" ]]; then
   exit 1
 fi
 
-if [[ -n "${GHCR_TOKEN:-}" ]]; then
-  echo "$GHCR_TOKEN" | docker login ghcr.io -u "${GHCR_USER:-manuel-envisix}" --password-stdin >/dev/null
-fi
+ghcr_login() {
+  local token_file="${HOSTING_DIR}/.ghcr_token"
+  if [[ -f "$token_file" ]]; then
+    GHCR_TOKEN="$(cat "$token_file")"
+    rm -f "$token_file"
+  fi
+  if [[ -z "${GHCR_TOKEN:-}" ]]; then
+    return 0
+  fi
+  local user="${GHCR_USER:-manuel-envisix}"
+  local attempt=1
+  while [[ $attempt -le 3 ]]; do
+    if printf '%s' "$GHCR_TOKEN" | docker login ghcr.io -u "$user" --password-stdin >/dev/null 2>&1; then
+      return 0
+    fi
+    attempt=$((attempt + 1))
+    sleep 2
+  done
+  echo "GHCR docker login failed after retries (continuing with anonymous pull if package is public)." >&2
+  return 0
+}
+
+ghcr_login
 
 docker compose -f docker-compose.yml pull
 docker compose -f docker-compose.yml up -d --remove-orphans

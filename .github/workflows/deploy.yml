@@ -37,6 +37,20 @@ jobs:
           labels: |
             org.opencontainers.image.source=https://github.com/${{ github.repository }}
             org.opencontainers.image.revision=${{ github.sha }}
+      - name: Set GHCR package visibility (public pull on VPS)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set +e
+          gh api --method PATCH \
+            -H "Accept: application/vnd.github+json" \
+            "/orgs/${{ github.repository_owner }}/packages/container/command-center" \
+            -f visibility=public >/dev/null 2>&1
+          gh api --method PATCH \
+            -H "Accept: application/vnd.github+json" \
+            "/user/packages/container/command-center" \
+            -f visibility=public >/dev/null 2>&1
+          echo "GHCR visibility patch attempted (public enables VPS pull without login)."
 
   deploy:
     needs: build
@@ -96,22 +110,24 @@ jobs:
           VPS_HOST: ${{ secrets.VPS_HOST }}
           VPS_USER: ${{ secrets.VPS_USER }}
           GHCR_PULL_TOKEN: ${{ secrets.GHCR_PULL_TOKEN }}
+          GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
           GHCR_USER: ${{ github.repository_owner }}
         run: |
           install -m 700 -d ~/.ssh
           printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
-          if [ -n "$GHCR_PULL_TOKEN" ]; then
-            GHCR_TOKEN="$GHCR_PULL_TOKEN"
-          else
-            GHCR_TOKEN="${{ secrets.GITHUB_TOKEN }}"
-          fi
+          GHCR_LOGIN_TOKEN="$GHCR_PULL_TOKEN"
+          if [ -z "$GHCR_LOGIN_TOKEN" ]; then GHCR_LOGIN_TOKEN="$GHCR_TOKEN"; fi
           ssh -o StrictHostKeyChecking=accept-new -i ~/.ssh/deploy_key "${VPS_USER}@${VPS_HOST}" "mkdir -p ~/hosting/command-center/data"
           scp -i ~/.ssh/deploy_key deployment/docker-compose.yml "${VPS_USER}@${VPS_HOST}:~/hosting/command-center/docker-compose.yml"
           scp -i ~/.ssh/deploy_key deployment/remote-deploy.sh "${VPS_USER}@${VPS_HOST}:~/hosting/command-center/remote-deploy.sh"
           scp -i ~/.ssh/deploy_key .env.runtime "${VPS_USER}@${VPS_HOST}:~/hosting/command-center/.env.runtime"
-          printf '%s' "$GHCR_TOKEN" | ssh -i ~/.ssh/deploy_key "${VPS_USER}@${VPS_HOST}" \
-            "docker login ghcr.io -u '${GHCR_USER}' --password-stdin && chmod +x ~/hosting/command-center/remote-deploy.sh && HOSTING_DIR=~/hosting/command-center ~/hosting/command-center/remote-deploy.sh"
+          if [ -n "$GHCR_LOGIN_TOKEN" ]; then
+            printf '%s' "$GHCR_LOGIN_TOKEN" | ssh -i ~/.ssh/deploy_key "${VPS_USER}@${VPS_HOST}" \
+              "cat > ~/hosting/command-center/.ghcr_token && chmod 600 ~/hosting/command-center/.ghcr_token"
+          fi
+          ssh -i ~/.ssh/deploy_key "${VPS_USER}@${VPS_HOST}" \
+            "chmod +x ~/hosting/command-center/remote-deploy.sh && HOSTING_DIR=~/hosting/command-center GHCR_USER='${GHCR_USER}' ~/hosting/command-center/remote-deploy.sh"
       - name: Smoke test
         if: steps.gate.outputs.ready == 'true'
         run: |
