@@ -6,11 +6,18 @@ decode() { if [ -n "${1:-}" ]; then printf '%s' "$1" | base64 -d; else echo ''; 
 relay_secret="$(decode "${RELAY_SECRET_B64:-}")"
 if [ -z "$relay_secret" ]; then relay_secret="${CC_RELAY_SECRET:-}"; fi
 
-wrong_code=$(curl -sS -o /dev/null -w '%{http_code}' -X POST https://agent-factory.envisix.at/push \
-  -H 'Authorization: Bearer definitely-wrong-token' \
-  -H 'Content-Type: application/json' \
-  -d '{"kind":"view","blocks":[]}' || true)
-echo "POST /push with wrong bearer: HTTP $wrong_code"
+wrong_code="000"
+for i in 1 2 3 4 5 6; do
+  wrong_code=$(curl -sS -o /dev/null -w '%{http_code}' -X POST https://agent-factory.envisix.at/push \
+    -H 'Authorization: Bearer definitely-wrong-token' \
+    -H 'Content-Type: application/json' \
+    -d '{"kind":"view","blocks":[]}' || true)
+  echo "POST /push with wrong bearer (attempt $i): HTTP $wrong_code"
+  if [ "$wrong_code" = "401" ]; then
+    break
+  fi
+  sleep 10
+done
 if [ "$wrong_code" != "401" ]; then
   echo "Expected HTTP 401 for invalid push bearer, got $wrong_code" >&2
   exit 1
