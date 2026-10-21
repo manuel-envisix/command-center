@@ -89,7 +89,7 @@ jobs:
           CC_LOGIN_PASSWORD: ${{ secrets.CC_LOGIN_PASSWORD }}
           CC_GITHUB_TOKEN: ${{ secrets.CC_GITHUB_TOKEN }}
           CURSOR_API_KEY: ${{ secrets.CURSOR_API_KEY }}
-          RELAY_SECRET: ${{ secrets.RELAY_SECRET }}
+          CC_RELAY_SECRET: ${{ secrets.RELAY_SECRET }}
         run: |
           decode() { if [ -n "${1:-}" ]; then printf '%s' "$1" | base64 -d; else echo ''; fi }
           login_pw="$(decode "$CC_LOGIN_PASSWORD_B64")"
@@ -99,7 +99,7 @@ jobs:
           cursor_key="$(decode "$CURSOR_API_KEY_B64")"
           if [ -z "$cursor_key" ]; then cursor_key="$CURSOR_API_KEY"; fi
           relay_secret="$(decode "$RELAY_SECRET_B64")"
-          if [ -z "$relay_secret" ]; then relay_secret="$RELAY_SECRET"; fi
+          if [ -z "$relay_secret" ]; then relay_secret="$CC_RELAY_SECRET"; fi
           quote() { printf "'%s'" "$(printf '%s' "$1" | sed "s/'/'\\\\''/g")"; }
           {
             echo "COMMAND_CENTER_IMAGE=$(quote "$IMAGE_REF")"
@@ -143,11 +143,11 @@ jobs:
           VPS_HOST: ${{ secrets.VPS_HOST }}
           VPS_USER: ${{ secrets.VPS_USER }}
           RELAY_SECRET_B64: ${{ secrets.RELAY_SECRET_B64 }}
-          RELAY_SECRET: ${{ secrets.RELAY_SECRET }}
+          CC_RELAY_SECRET: ${{ secrets.RELAY_SECRET }}
         run: |
           decode() { if [ -n "${1:-}" ]; then printf '%s' "$1" | base64 -d; else echo ''; fi }
           relay_secret="$(decode "$RELAY_SECRET_B64")"
-          if [ -z "$relay_secret" ]; then relay_secret="$RELAY_SECRET"; fi
+          if [ -z "$relay_secret" ]; then relay_secret="$CC_RELAY_SECRET"; fi
           wrong_code=$(curl -sS -o /dev/null -w '%{http_code}' -X POST https://agent-factory.envisix.at/push \
             -H 'Authorization: Bearer definitely-wrong-token' \
             -H 'Content-Type: application/json' \
@@ -165,8 +165,7 @@ jobs:
           install -m 700 -d ~/.ssh
           printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
-          actual_hash="$(ssh -o StrictHostKeyChecking=accept-new -i ~/.ssh/deploy_key "${VPS_USER}@${VPS_HOST}" \
-            "docker exec command-center sh -c 'printf %s \"\$RELAY_SECRET\" | sha256sum' | awk '{print \$1}'")"
+          actual_hash="$(ssh -i ~/.ssh/deploy_key "${VPS_USER}@${VPS_HOST}" docker exec command-center printenv RELAY_SECRET | sha256sum | awk '{print $1}')"
           if [ "$actual_hash" = "$expected_hash" ]; then
             echo "RELAY_SECRET container check: match"
           else
