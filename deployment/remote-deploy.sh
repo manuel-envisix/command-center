@@ -20,7 +20,13 @@ if [[ ! -f .env.runtime ]]; then
   exit 1
 fi
 
-if ! grep -q '^RELAY_SECRET=' .env.runtime; then
+if grep -q '^RELAY_SECRET=' .env.runtime; then
+  relay_line="$(grep '^RELAY_SECRET=' .env.runtime | head -n1)"
+  if grep -q '^RELAY_SECRET=' .env; then
+    grep -v '^RELAY_SECRET=' .env > .env.tmp && mv .env.tmp .env
+  fi
+  printf '%s\n' "$relay_line" >> .env
+else
   grep '^RELAY_SECRET=' .env >> .env.runtime
 fi
 if ! grep -q '^SESSION_SECRET=' .env.runtime; then

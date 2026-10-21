@@ -25,7 +25,7 @@ expected_hash="$(printf '%s' "$relay_secret" | sha256sum | awk '{print $1}')"
 install -m 700 -d ~/.ssh
 printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/deploy_key
 chmod 600 ~/.ssh/deploy_key
-actual_hash="$(ssh -i ~/.ssh/deploy_key "${VPS_USER}@${VPS_HOST}" 'docker exec command-center printenv RELAY_SECRET | sha256sum' | awk '{print $1}')"
+actual_hash="$(ssh -i ~/.ssh/deploy_key "${VPS_USER}@${VPS_HOST}" docker exec command-center printenv RELAY_SECRET | tr -d '\n' | sha256sum | awk '{print $1}')"
 if [ "$actual_hash" = "$expected_hash" ]; then
   echo "RELAY_SECRET container check: match"
 else
