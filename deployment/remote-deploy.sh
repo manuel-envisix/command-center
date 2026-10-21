@@ -6,11 +6,13 @@ mkdir -p "$HOSTING_DIR/data"
 cd "$HOSTING_DIR"
 
 touch .env
-if ! grep -q '^RELAY_SECRET=' .env 2>/dev/null; then
-  printf "RELAY_SECRET='%s'\n" "$(openssl rand -hex 32)" >> .env
-fi
 if ! grep -q '^SESSION_SECRET=' .env 2>/dev/null; then
   printf "SESSION_SECRET='%s'\n" "$(openssl rand -hex 32)" >> .env
+fi
+
+# RELAY_SECRET: prefer CI-managed value in .env.runtime; otherwise generate-once in .env
+if ! grep -q '^RELAY_SECRET=' .env 2>/dev/null && ! grep -q '^RELAY_SECRET=' .env.runtime 2>/dev/null; then
+  printf "RELAY_SECRET='%s'\n" "$(openssl rand -hex 32)" >> .env
 fi
 
 if [[ ! -f .env.runtime ]]; then
@@ -18,11 +20,12 @@ if [[ ! -f .env.runtime ]]; then
   exit 1
 fi
 
-for key in RELAY_SECRET SESSION_SECRET; do
-  if ! grep -q "^${key}=" .env.runtime; then
-    grep "^${key}=" .env >> .env.runtime
-  fi
-done
+if ! grep -q '^RELAY_SECRET=' .env.runtime; then
+  grep '^RELAY_SECRET=' .env >> .env.runtime
+fi
+if ! grep -q '^SESSION_SECRET=' .env.runtime; then
+  grep '^SESSION_SECRET=' .env >> .env.runtime
+fi
 
 read_image() {
   local line val
@@ -64,6 +67,6 @@ ghcr_login() {
 ghcr_login
 
 docker compose -f docker-compose.yml pull
-docker compose -f docker-compose.yml up -d --remove-orphans
+docker compose -f docker-compose.yml up -d --remove-orphans --force-recreate
 
 echo "Deploy finished (secrets not logged)."

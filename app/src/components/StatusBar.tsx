@@ -49,8 +49,14 @@ export function StatusBar({ intervalMs }: { intervalMs: number }) {
     };
   }, [intervalMs]);
 
+  const showGrok = Boolean(grok?.configured);
+
   return (
-    <footer className="status-bar" aria-label="Systemstatus">
+    <footer
+      className="status-bar"
+      style={{ gridTemplateColumns: showGrok ? "repeat(3, 1fr)" : "repeat(2, 1fr)" }}
+      aria-label="Systemstatus"
+    >
       <section className="status-section">
         <h3>GitHub</h3>
         {!github?.configured && <div>Nicht konfiguriert</div>}
@@ -91,27 +97,26 @@ export function StatusBar({ intervalMs }: { intervalMs: number }) {
           </div>
         )}
       </section>
-      <section className="status-section">
-        <h3>Grok Bot Assistenten</h3>
-        {!grok?.configured && <div>Optional · Pfad fehlt</div>}
-        {grok?.configured && (
+      {showGrok && (
+        <section className="status-section">
+          <h3>Grok Bot Assistenten</h3>
           <div>
-            {grok.error ? (
+            {grok?.error ? (
               <span style={{ color: "var(--warn)" }}>{grok.error}</span>
             ) : (
               <ul>
-                {grok.agents.slice(0, 6).map((a) => (
+                {grok?.agents.slice(0, 6).map((a) => (
                   <li key={a.name}>
                     {a.name}
                     {a.lastExport ? ` · ${new Date(a.lastExport).toLocaleDateString("de-AT")}` : ""}
                   </li>
                 ))}
-                {grok.agents.length === 0 && <li>Keine Exporte gefunden</li>}
+                {(grok?.agents.length ?? 0) === 0 && <li>Keine Exporte gefunden</li>}
               </ul>
             )}
           </div>
-        )}
-      </section>
+        </section>
+      )}
     </footer>
   );
 }

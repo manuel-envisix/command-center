@@ -21,6 +21,13 @@ export interface AppConfig {
 
 let cached: AppConfig | null = null;
 
+function pickNonEmpty(...values: Array<string | undefined>): string | undefined {
+  for (const v of values) {
+    if (v && v.trim().length > 0) return v;
+  }
+  return undefined;
+}
+
 export function configPath(): string {
   return resolve(process.env.CONFIG_PATH || resolve(process.cwd(), "config.local.json"));
 }
@@ -40,13 +47,13 @@ export async function loadConfig(): Promise<AppConfig> {
     ...fileConfig,
     github: {
       org: fileConfig.github?.org ?? process.env.CC_GITHUB_ORG ?? "manuel-envisix",
-      token: process.env.CC_GITHUB_TOKEN || fileConfig.github?.token,
+      token: pickNonEmpty(process.env.CC_GITHUB_TOKEN, fileConfig.github?.token),
     },
     cursor: {
-      apiKey: process.env.CURSOR_API_KEY || fileConfig.cursor?.apiKey,
+      apiKey: pickNonEmpty(process.env.CURSOR_API_KEY, fileConfig.cursor?.apiKey),
     },
     grokBot: {
-      agentsPath: process.env.GROK_BOT_AGENTS_PATH || fileConfig.grokBot?.agentsPath,
+      agentsPath: pickNonEmpty(process.env.GROK_BOT_AGENTS_PATH, fileConfig.grokBot?.agentsPath),
     },
     statusPollIntervalMs: fileConfig.statusPollIntervalMs ?? 60_000,
   };
