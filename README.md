@@ -1,129 +1,124 @@
 # Command Center
 
-Lokales Live-Dashboard (UI auf Deutsch) für Manuel Kroiß / Envisix: Grok Bot pusht Ansichten über einen Cloudflare-Relay, während GitHub, Cursor Cloud Agents und Grok-Bot-Exporte in der Statusleiste erscheinen.
+Live-Dashboard (UI auf Deutsch) für Manuel Kroiß / Envisix: Grok Bot pusht Ansichten per HTTP, GitHub / Cursor Cloud Agents / Grok-Bot-Exporte erscheinen in der Statusleiste.
+
+**Produktion:** https://agent-factory.envisix.at (Docker + Traefik auf dem vServer)
 
 ## Architektur
 
 | Teil | Beschreibung |
 |------|----------------|
-| `relay/` | Cloudflare Worker + Durable Object: `POST /push`, WebSocket `GET /ws`, letzte 50 Nachrichten |
-| `app/` | Vite + React Dashboard, lokaler API-Proxy für Tokens |
+| `app/` | Vite + React UI, Node-Server mit integriertem Relay (`POST /push`, WebSocket `/ws`, Historie 50 Nachrichten, optional `/data` Volume) |
 | `push/` | CLI zum Testen von Push-Nachrichten |
+| `deployment/` | `docker-compose.yml` für Traefik, `remote-deploy.sh` |
 | `docs/messages.md` | Nachrichtenschema für den Chief of Staff |
 
-## Voraussetzungen
-
-- Node.js 20+
-- Cloudflare-Konto (Free Tier) für den Relay
-- Lokale `config.local.json` (nicht committen)
-
-## Einrichtung (lokal)
-
-1. Repository klonen und Abhängigkeiten installieren:
+## Lokale Entwicklung
 
 ```bash
 npm install
-```
-
-2. Beispiel-Konfiguration kopieren:
-
-```bash
-cp config.example.json config.local.json
-```
-
-3. `config.local.json` anpassen: Relay-URL/Secret, optional GitHub-Token, Cursor API Key, optional Pfad zu Grok-Bot-Agent-Exporten.
-
-4. Dashboard starten (öffnet den Browser):
-
-```bash
+cp config.example.json config.local.json   # optional für Status-APIs
 npm start
 ```
 
-## Relay deployen (Cloudflare)
-
-1. In `relay/` einloggen und Secret setzen:
+Ohne `CC_LOGIN_PASSWORD` ist die Anmeldung lokal deaktiviert. Für Login-Tests:
 
 ```bash
-cd relay
-npx wrangler login
+export CC_LOGIN_PASSWORD='dev-pass'
+export SESSION_SECRET='local-dev-session-secret'
+export RELAY_SECRET='local-dev-relay-secret'
+npm start
 ```
+
+## VPS / Produktion (envisix-prod-01)
+
+### Einmalig auf dem Server
 
 ```bash
-npx wrangler secret put RELAY_SECRET
+mkdir -p ~/hosting/command-center/data
 ```
 
-2. Worker deployen:
+Generate-once Secrets (werden von `deployment/remote-deploy.sh` angelegt, wenn sie fehlen):
+
+- `~/hosting/command-center/.env` — `RELAY_SECRET`, `SESSION_SECRET`
+
+Runtime-Konfiguration (von CI geschrieben, **nicht committen**):
+
+- `~/hosting/command-center/.env.runtime` — Image-Tag, `CC_LOGIN_PASSWORD`, optionale API-Keys
+
+### Docker Compose (Traefik)
+
+- Host: `agent-factory.envisix.at`
+- Entrypoint: `websecure`, `certresolver=letsencrypt-dns`
+- Netzwerk: externes `proxy`
+- Siehe `deployment/docker-compose.yml`
+
+### Image
 
 ```bash
-npx wrangler deploy
+docker build -t ghcr.io/manuel-envisix/command-center:local .
 ```
 
-3. Die ausgegebene `*.workers.dev`-URL in `config.local.json` unter `relay.url` eintragen. Dasselbe Secret wie bei `RELAY_SECRET` unter `relay.secret` (nur lokal).
+Registry: `ghcr.io/manuel-envisix/command-center`
 
-### Worker-Secrets & Bindings
+### GitHub Actions Deploy
 
-| Name | Art | Beschreibung |
-|------|-----|--------------|
-| `RELAY_SECRET` | Secret (Pflicht) | Bearer-Token für `POST /push` und WebSocket-Auth (`?secret=` oder Subprotocol `cc-secret.<wert>`) |
-| `RELAY_ROOM` | Durable Object Binding | In `wrangler.toml` vorkonfiguriert |
+Workflow: `.github/workflows/deploy.yml` (Push auf `main` und `cursor/command-center-v1-c5e1`, plus `workflow_dispatch`).
 
-Keine weiteren Secrets im Worker nötig.
+**Repository-Secrets (Deploy):**
 
-### Relay lokal testen
+| Secret | Pflicht | Hinweis |
+|--------|---------|---------|
+| `SSH_PRIVATE_KEY` | ja | SSH-Key für VPS |
+| `VPS_HOST` | ja | Hostname des vServers |
+| `VPS_USER` | ja | SSH-Benutzer |
+| `CC_LOGIN_PASSWORD` oder `CC_LOGIN_PASSWORD_B64` | ja | Dashboard-Passwort (Base64 empfohlen bei `$` / `\`) |
+| `CC_GITHUB_TOKEN` / `CC_GITHUB_TOKEN_B64` | nein | Statusleiste GitHub |
+| `CURSOR_API_KEY` / `CURSOR_API_KEY_B64` | nein | Statusleiste Cursor |
+
+Fehlen Pflicht-Secrets, wird der Deploy-Job mit Hinweis übersprungen (Build läuft weiter).
+
+### RELAY_SECRET für den Grok Bot (Assistant Push)
+
+Auf dem VPS (Werte nicht in Logs teilen):
 
 ```bash
-cd relay
-npx wrangler dev
+grep '^RELAY_SECRET=' ~/hosting/command-center/.env
 ```
 
-## Push testen
+Nur dieser Pfad — Secret lokal kopieren und dem Assistant als Bearer-Token geben.
+
+## Ansicht vom Grok Bot pushen
 
 ```bash
-node push/bin/push.mjs --file push/examples/view-status.json
-```
-
-Mit stdin:
-
-```bash
-cat push/examples/control-toast.json | node push/bin/push.mjs
-```
-
-## Beispiel-Push (Minimal)
-
-```json
-{
-  "version": 1,
-  "kind": "view",
-  "title": "Hallo Command Center",
-  "blocks": [
-    { "type": "markdown", "content": "Erste **Live-Ansicht**." }
-  ]
-}
-```
-
-```bash
-curl -X POST "$RELAY_URL/push" \
+curl -sS -X POST 'https://agent-factory.envisix.at/push' \
   -H "Authorization: Bearer $RELAY_SECRET" \
-  -H "Content-Type: application/json" \
-  -d '{"version":1,"kind":"view","title":"Test","blocks":[{"type":"markdown","content":"Hi"}]}'
+  -H 'Content-Type: application/json' \
+  -d '{"version":1,"kind":"view","title":"Test","blocks":[{"type":"markdown","content":"Hallo **Command Center**"}]}'
+```
+
+`/push` ist **nicht** hinter dem Login — nur Bearer `RELAY_SECRET`. UI, `/api/*` und WebSocket `/ws` erfordern die Session (Passwort `CC_LOGIN_PASSWORD`).
+
+CLI:
+
+```bash
+export COMMAND_CENTER_URL='https://agent-factory.envisix.at'
+export RELAY_SECRET='...'
+node push/bin/push.mjs --file push/examples/view-status.json
 ```
 
 ## Sicherheit
 
-- Dieses Repo ist **öffentlich**: keine echten Tokens, IPs oder privaten Hostnamen committen.
-- Secrets nur in `config.local.json` (gitignored) und als Cloudflare Worker Secret `RELAY_SECRET`.
-- GitHub- und Cursor-Tokens werden nur vom lokalen API-Server verwendet; das Frontend ruft `/api/status/*` auf.
-- Die Relay-WebSocket-URL mit Secret wird nur über `GET /api/relay/ws-url` an den lokalen Browser geliefert.
-- `html`-Blöcke laufen in einem sandboxed `iframe` ohne Berechtigungen.
+- Öffentliches Repo: keine Secrets, IPs oder privaten Hostnamen committen.
+- Produktion: HttpOnly-Session-Cookie (signiert mit `SESSION_SECRET`), Rate-Limit auf Login.
+- Status-Tokens nur als Container-Env (`CC_GITHUB_TOKEN`, `CURSOR_API_KEY`).
 
-## Tests & CI
+## Tests
 
 ```bash
-npm test
 npm run typecheck
+npm test
 ```
-
-GitHub Actions (`.github/workflows/ci.yml`) führt Typecheck und Tests aus.
 
 ## Lizenz
 

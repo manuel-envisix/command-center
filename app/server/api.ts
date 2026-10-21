@@ -20,22 +20,6 @@ export async function handleApi(req: IncomingMessage, res: ServerResponse): Prom
     return true;
   }
 
-  if (url.pathname === "/api/relay/ws-url" && req.method === "GET") {
-    const config = await loadConfig();
-    const relayUrl = config.relay?.url;
-    const secret = config.relay?.secret;
-    if (!relayUrl || !secret) {
-      sendJson(res, 503, { error: "Relay nicht konfiguriert" });
-      return true;
-    }
-    const wsBase = new URL(relayUrl);
-    wsBase.protocol = wsBase.protocol === "https:" ? "wss:" : "ws:";
-    wsBase.pathname = "/ws";
-    wsBase.searchParams.set("secret", secret);
-    sendJson(res, 200, { url: wsBase.toString() });
-    return true;
-  }
-
   if (url.pathname === "/api/status/github" && req.method === "GET") {
     const config = await loadConfig();
     sendJson(res, 200, await fetchGithubStatus(config));

@@ -3,8 +3,14 @@ import type { DashboardMessage } from "../types/message";
 import { parseIncomingMessage } from "../types/message";
 
 interface PublicConfig {
-  relay: { url: string | null; hasSecret: boolean };
+  relay: { sameOrigin: boolean; pushConfigured: boolean };
   statusPollIntervalMs: number;
+  loginRequired?: boolean;
+}
+
+function wsUrl(): string {
+  const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
+  return `${proto}//${window.location.host}/ws`;
 }
 
 export function useRelay(onMessage: (msg: DashboardMessage) => void) {
@@ -19,23 +25,11 @@ export function useRelay(onMessage: (msg: DashboardMessage) => void) {
     const cfg = (await res.json()) as PublicConfig;
     setPublicConfig(cfg);
 
-    if (!cfg.relay.url || !cfg.relay.hasSecret) {
-      setConnected(false);
-      return;
-    }
-
-    const secretRes = await fetch("/api/relay/ws-url");
-    if (!secretRes.ok) {
-      setConnected(false);
-      return;
-    }
-    const { url: fullUrl } = (await secretRes.json()) as { url: string };
-
     if (wsRef.current) {
       wsRef.current.close();
     }
 
-    const socket = new WebSocket(fullUrl);
+    const socket = new WebSocket(wsUrl());
     wsRef.current = socket;
 
     socket.onopen = () => setConnected(true);

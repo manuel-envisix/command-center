@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "start": "tsx server/dev.ts",
+    "start:prod": "NODE_ENV=production tsx server/production.ts",
     "build": "vite build",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.server.json",
@@ -12,16 +13,18 @@
   },
   "dependencies": {
     "marked": "^15.0.7",
-    "open": "^10.1.0"
+    "open": "^10.1.0",
+    "tsx": "^4.19.3",
+    "ws": "^8.18.1"
   },
   "devDependencies": {
     "@types/node": "^22.13.4",
     "@types/react": "^19.0.10",
     "@types/react-dom": "^19.0.4",
+    "@types/ws": "^8.5.14",
     "@vitejs/plugin-react": "^4.3.4",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
-    "tsx": "^4.19.3",
     "typescript": "^5.7.3",
     "vite": "^6.1.0",
     "vitest": "^3.0.5"

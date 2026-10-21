@@ -1,0 +1,25 @@
+services:
+  command-center:
+    image: ${COMMAND_CENTER_IMAGE}
+    container_name: command-center
+    restart: unless-stopped
+    env_file:
+      - .env.runtime
+    environment:
+      NODE_ENV: production
+      PORT: "3000"
+      DATA_DIR: /data
+    volumes:
+      - ./data:/data
+    networks:
+      - proxy
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.command-center.rule=Host(`agent-factory.envisix.at`)
+      - traefik.http.routers.command-center.entrypoints=websecure
+      - traefik.http.routers.command-center.tls.certresolver=letsencrypt-dns
+      - traefik.http.services.command-center.loadbalancer.server.port=3000
+
+networks:
+  proxy:
+    external: true

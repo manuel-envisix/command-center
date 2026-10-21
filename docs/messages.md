@@ -179,8 +179,12 @@ Für Sonderfälle: Inhalt wird in einem **sandboxed** `iframe` (`srcdoc`, ohne R
 ## Beispiel: komplette View pushen
 
 ```bash
+export COMMAND_CENTER_URL='https://agent-factory.envisix.at'
+export RELAY_SECRET='…'
 node push/bin/push.mjs --file push/examples/view-status.json
 ```
+
+Oder `curl -X POST https://agent-factory.envisix.at/push` mit Header `Authorization: Bearer $RELAY_SECRET`.
 
 ## Relay-Antwort
 

@@ -112,7 +112,7 @@ export default function App() {
             <div className="stage-empty">
               <p>Warte auf Live-Ansichten vom Chief of Staff …</p>
               <p style={{ fontSize: 14 }}>
-                Relay: {publicConfig?.relay.url ?? "nicht konfiguriert"}
+                Push: {publicConfig?.relay.pushConfigured ? "bereit" : "RELAY_SECRET fehlt"}
               </p>
             </div>
           )}

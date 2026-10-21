@@ -3,10 +3,10 @@ import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 
 function usage() {
-  console.error(`Usage: node push/bin/push.mjs [--config path] [--file payload.json]
+  console.error(`Usage: node push/bin/push.mjs [--config path] [--file payload.json] [--url baseUrl]
        echo '{"kind":"view",...}' | node push/bin/push.mjs
 
-Reads relay.url and relay.secret from config (default: ./config.local.json).`);
+Uses COMMAND_CENTER_URL + RELAY_SECRET from env, or config.local.json (relay.url / relay.secret legacy keys).`);
   process.exit(1);
 }
 
@@ -19,12 +19,15 @@ async function main() {
   const args = process.argv.slice(2);
   let configPath = resolve(process.env.CONFIG_PATH || "./config.local.json");
   let filePath = null;
+  let cliUrl = process.env.COMMAND_CENTER_URL || null;
 
   for (let i = 0; i < args.length; i++) {
     if (args[i] === "--config" && args[i + 1]) {
       configPath = resolve(args[++i]);
     } else if (args[i] === "--file" && args[i + 1]) {
       filePath = resolve(args[++i]);
+    } else if (args[i] === "--url" && args[i + 1]) {
+      cliUrl = args[++i];
     } else if (args[i] === "-h" || args[i] === "--help") {
       usage();
     }
@@ -57,11 +60,20 @@ async function main() {
     process.exit(1);
   }
 
-  const config = await loadConfig(configPath);
-  const url = config?.relay?.url;
-  const secret = config?.relay?.secret;
+  let url = cliUrl;
+  let secret = process.env.RELAY_SECRET || null;
   if (!url || !secret) {
-    console.error("config.relay.url and config.relay.secret are required");
+    try {
+      const config = await loadConfig(configPath);
+      url = url || config?.relay?.url || config?.commandCenterUrl;
+      secret = secret || config?.relay?.secret;
+    } catch {
+      // optional config file
+    }
+  }
+
+  if (!url || !secret) {
+    console.error("Set COMMAND_CENTER_URL and RELAY_SECRET, or provide config with relay.url / relay.secret");
     process.exit(1);
   }
 

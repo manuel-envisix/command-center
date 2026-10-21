@@ -1,8 +1,4 @@
 {
-  "relay": {
-    "url": "https://command-center-relay.example.workers.dev",
-    "secret": "CHANGE_ME_USE_A_LONG_RANDOM_STRING"
-  },
   "github": {
     "token": "ghp_EXAMPLE_REPLACE_WITH_YOUR_TOKEN",
     "org": "manuel-envisix"
