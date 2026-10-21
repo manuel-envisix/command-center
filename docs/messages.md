@@ -137,6 +137,18 @@ Jeder Block hat ein Pflichtfeld `type`.
 }
 ```
 
+Alternativ kann der Chief of Staff ein Bild **inline** pushen (max. **5 MB** nach Dekodierung). Der Server speichert es im Daten-Volume und ersetzt `dataUrl` durch eine geschützte URL (`/media/uploads/…`, nur nach Login):
+
+```json
+{
+  "type": "image",
+  "dataUrl": "data:image/png;base64,iVBORw0KGgo…",
+  "caption": "Screenshot vom Grok Bot"
+}
+```
+
+Oder zuerst hochladen und die zurückgegebene URL in einem View-Block verwenden (siehe **Bild-Upload** unten).
+
 ### `linkList`
 
 ```json
@@ -223,6 +235,40 @@ node push/bin/push.mjs --file push/examples/view-status.json
 
 Oder `curl -X POST https://agent-factory.envisix.at/push` mit Header `Authorization: Bearer $RELAY_SECRET`.
 
+## Bild-Upload (`POST /upload`)
+
+Authentifizierung wie bei `/push`: `Authorization: Bearer $RELAY_SECRET`.
+
+Request (JSON, max. **5 MB** dekodiert):
+
+```json
+{
+  "contentType": "image/png",
+  "dataBase64": "iVBORw0KGgo…"
+}
+```
+
+Antwort:
+
+```json
+{ "ok": true, "url": "/media/uploads/550e8400-e29b-41d4-a716-446655440000.png", "filename": "…" }
+```
+
+Die `url` ist relativ zur Command-Center-Origin und erfordert eine **eingeloggte** Browser-Session (`GET /media/uploads/…`). In Push-Views kannst du sie im `image`-Block als `url` verwenden.
+
+```bash
+curl -sS -X POST "$COMMAND_CENTER_URL/upload" \
+  -H "Authorization: Bearer $RELAY_SECRET" \
+  -H "Content-Type: application/json" \
+  -d '{"contentType":"image/png","dataBase64":"…"}'
+```
+
+Erlaubte Typen: `image/png`, `image/jpeg`, `image/gif`, `image/webp`, `image/svg+xml`. Dateien liegen unter `DATA_DIR/uploads/` (Docker-Volume `./data`).
+
+## Cloud-Agent-Artefakte (Dashboard)
+
+Im Reiter **Agents** listet das Dashboard Bilder und Dateien aus dem Cursor-Artefakt-Store (`GET /v1/agents/{id}/artifacts`). Downloads laufen **serverseitig** über `GET /api/agents/{id}/artifact?path=artifacts/…` (API-Key bleibt auf dem Server). Bilder werden als Thumbnails mit Vollbild-Tap angezeigt.
+
 ## Relay-Antwort
 
-Erfolg: `200` mit `{ "ok": true, "seq": 42 }`. Der Relay hängt `_seq` und `_receivedAt` an die gespeicherte Nachricht; Clients erhalten dieselbe Form über WebSocket.
+Erfolg: `200` mit `{ "ok": true, "seq": 42 }`. Der Relay hängt `_seq` und `_receivedAt` an die gespeicherte Nachricht; Clients erhalten dieselbe Form über WebSocket. `image`-Blöcke mit `dataUrl` werden vor dem Speichern in persistente URLs umgewandelt.

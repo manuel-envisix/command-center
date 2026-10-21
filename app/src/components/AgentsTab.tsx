@@ -1,5 +1,6 @@
 import { marked } from "marked";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { ImageLightbox } from "./ImageLightbox";
 import type { AgentChatPayload, AgentSummary } from "../types/agentChat";
 
 interface AgentsTabProps {
@@ -144,6 +145,33 @@ export function AgentsTab({
             src={cursorUrl}
             sandbox="allow-scripts allow-same-origin allow-forms"
           />
+        )}
+
+        {selected?.artifacts && selected.artifacts.length > 0 && (
+          <section className="agents-artifacts" aria-label="Agent-Artefakte">
+            <h3>Screenshots &amp; Artefakte</h3>
+            <div className="agents-artifact-grid">
+              {selected.artifacts.map((artifact) =>
+                artifact.kind === "image" ? (
+                  <ImageLightbox
+                    key={artifact.path}
+                    src={artifact.proxyUrl}
+                    alt={artifact.name}
+                    className="agents-artifact-thumb"
+                  />
+                ) : (
+                  <a
+                    key={artifact.path}
+                    className="agents-artifact-file"
+                    href={artifact.proxyUrl}
+                    download={artifact.name}
+                  >
+                    {artifact.name}
+                  </a>
+                ),
+              )}
+            </div>
+          </section>
         )}
 
         <div className="agents-chat">

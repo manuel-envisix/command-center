@@ -5,6 +5,7 @@ import {
 } from "./cursor/conversation.js";
 import { fetchRunStreamText } from "./cursor/stream.js";
 import { getAgent, listAgents, listRuns } from "./cursor/api.js";
+import { isImageArtifactPath, listArtifacts } from "./cursor/artifacts.js";
 import type { MessageRelay } from "./relay.js";
 
 export interface AgentChatPayload {
@@ -19,6 +20,13 @@ export interface AgentChatPayload {
     repos?: Array<{ url: string; startingRef?: string; branch?: string; prUrl?: string }>;
   };
   messages: ChatMessage[];
+  artifacts?: Array<{
+    path: string;
+    name: string;
+    kind: "image" | "file";
+    updatedAt?: string;
+    proxyUrl: string;
+  }>;
   error?: string;
 }
 
@@ -85,6 +93,23 @@ export class AgentLiveService {
       }
 
       const messages = await buildConversation(apiKey, agentId, runs.items, liveByRunId);
+      let artifacts: AgentChatPayload["artifacts"];
+      try {
+        const listed = await listArtifacts(apiKey, agentId);
+        artifacts = (listed.items ?? []).map((item) => {
+          const name = item.path.split("/").pop() ?? item.path;
+          const proxyUrl = `/api/agents/${encodeURIComponent(agentId)}/artifact?path=${encodeURIComponent(item.path)}`;
+          return {
+            path: item.path,
+            name,
+            kind: isImageArtifactPath(item.path) ? "image" : "file",
+            updatedAt: item.updatedAt,
+            proxyUrl,
+          };
+        });
+      } catch {
+        artifacts = undefined;
+      }
       const branches = latest?.git?.branches ?? [];
       const repos = (agent.repos ?? []).map((r) => {
         const match = branches.find((b) => r.url.includes(b.repoUrl) || b.repoUrl.includes(r.url.replace(/^https?:\/\//, "")));
@@ -102,7 +127,7 @@ export class AgentLiveService {
         status: agent.status,
         url: agent.url,
         repos,
-      });
+      }, undefined, artifacts);
     } catch (err) {
       const message = err instanceof Error ? err.message : "Cursor API Fehler";
       this.broadcast(agentId, [], { id: agentId, name: agentId, status: "ERROR" }, message);
@@ -151,6 +176,7 @@ export class AgentLiveService {
     messages: ChatMessage[],
     agent: AgentChatPayload["agent"],
     error?: string,
+    artifacts?: AgentChatPayload["artifacts"],
   ): void {
     const payload: AgentChatPayload = {
       kind: "agent_chat",
@@ -158,6 +184,7 @@ export class AgentLiveService {
       updatedAt: Date.now(),
       agent,
       messages,
+      artifacts,
       error,
     };
     this.relay.broadcast({ ...payload } as Record<string, unknown>);

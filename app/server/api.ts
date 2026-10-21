@@ -1,6 +1,10 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { getAgentLiveService } from "./agent-live-registry.js";
 import { createFollowUpRun } from "./cursor/api.js";
+import {
+  assertSafeArtifactPath,
+  getArtifactDownloadUrl,
+} from "./cursor/artifacts.js";
 import { loadConfig, publicConfig } from "./config.js";
 import { fetchCursorStatus } from "./status/cursor.js";
 import { fetchGithubStatus } from "./status/github.js";
@@ -56,6 +60,41 @@ export async function handleApi(req: IncomingMessage, res: ServerResponse): Prom
     const live = getAgentLiveService();
     live?.unwatch(watchMatch[1]);
     sendJson(res, 200, { ok: true });
+    return true;
+  }
+
+  const artifactMatch = url.pathname.match(/^\/api\/agents\/([^/]+)\/artifact$/);
+  if (artifactMatch && req.method === "GET") {
+    const config = await loadConfig();
+    const apiKey = config.cursor?.apiKey;
+    if (!apiKey) {
+      sendJson(res, 503, { error: "CURSOR_API_KEY nicht konfiguriert" });
+      return true;
+    }
+    const artifactPath = url.searchParams.get("path") ?? "";
+    try {
+      assertSafeArtifactPath(artifactPath);
+      const { url: presigned } = await getArtifactDownloadUrl(
+        apiKey,
+        artifactMatch[1],
+        artifactPath,
+      );
+      const upstream = await fetch(presigned);
+      if (!upstream.ok) {
+        sendJson(res, 502, { error: `Artifact download failed (${upstream.status})` });
+        return true;
+      }
+      const contentType = upstream.headers.get("content-type") ?? "application/octet-stream";
+      const buf = Buffer.from(await upstream.arrayBuffer());
+      res.statusCode = 200;
+      res.setHeader("Content-Type", contentType);
+      res.setHeader("Cache-Control", "private, max-age=300");
+      res.end(buf);
+    } catch (err) {
+      sendJson(res, 400, {
+        error: err instanceof Error ? err.message : "Artifact request failed",
+      });
+    }
     return true;
   }
 
