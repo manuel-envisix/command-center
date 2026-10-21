@@ -39,6 +39,10 @@ if [[ -z "$COMMAND_CENTER_IMAGE" ]]; then
   exit 1
 fi
 
+if [[ -n "${GHCR_TOKEN:-}" ]]; then
+  echo "$GHCR_TOKEN" | docker login ghcr.io -u "${GHCR_USER:-manuel-envisix}" --password-stdin >/dev/null
+fi
+
 docker compose -f docker-compose.yml pull
 docker compose -f docker-compose.yml up -d --remove-orphans
 

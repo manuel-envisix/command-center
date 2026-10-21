@@ -17,27 +17,26 @@ env:
 jobs:
   build:
     runs-on: ubuntu-latest
+    outputs:
+      image_ref: ${{ steps.image.outputs.ref }}
     steps:
       - uses: actions/checkout@v4
+      - id: image
+        run: echo "ref=${IMAGE_NAME}:${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
       - uses: docker/setup-buildx-action@v3
       - uses: docker/login-action@v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ env.IMAGE_NAME }}
-          tags: |
-            type=sha
-            type=raw,value=latest,enable={{is_default_branch}}
       - uses: docker/build-push-action@v6
         with:
           context: .
           push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
+          tags: ${{ steps.image.outputs.ref }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
 
   deploy:
     needs: build
@@ -67,7 +66,7 @@ jobs:
       - name: Prepare deploy files
         if: steps.gate.outputs.ready == 'true'
         env:
-          IMAGE_TAG: ${{ github.sha }}
+          IMAGE_REF: ${{ needs.build.outputs.image_ref }}
           CC_LOGIN_PASSWORD_B64: ${{ secrets.CC_LOGIN_PASSWORD_B64 }}
           CC_GITHUB_TOKEN_B64: ${{ secrets.CC_GITHUB_TOKEN_B64 }}
           CURSOR_API_KEY_B64: ${{ secrets.CURSOR_API_KEY_B64 }}
@@ -84,7 +83,7 @@ jobs:
           if [ -z "$cursor_key" ]; then cursor_key="$CURSOR_API_KEY"; fi
           quote() { printf "'%s'" "$(printf '%s' "$1" | sed "s/'/'\\\\''/g")"; }
           {
-            echo "COMMAND_CENTER_IMAGE='${IMAGE_NAME}:${IMAGE_TAG}'"
+            echo "COMMAND_CENTER_IMAGE=$(quote "$IMAGE_REF")"
             echo "CC_LOGIN_PASSWORD=$(quote "$login_pw")"
             echo "CC_GITHUB_TOKEN=$(quote "$github_token")"
             echo "CURSOR_API_KEY=$(quote "$cursor_key")"
@@ -96,22 +95,37 @@ jobs:
           SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
           VPS_HOST: ${{ secrets.VPS_HOST }}
           VPS_USER: ${{ secrets.VPS_USER }}
+          GHCR_PULL_TOKEN: ${{ secrets.GHCR_PULL_TOKEN }}
+          GHCR_USER: ${{ github.repository_owner }}
         run: |
           install -m 700 -d ~/.ssh
           printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
+          if [ -n "$GHCR_PULL_TOKEN" ]; then
+            GHCR_TOKEN="$GHCR_PULL_TOKEN"
+          else
+            GHCR_TOKEN="${{ secrets.GITHUB_TOKEN }}"
+          fi
           ssh -o StrictHostKeyChecking=accept-new -i ~/.ssh/deploy_key "${VPS_USER}@${VPS_HOST}" "mkdir -p ~/hosting/command-center/data"
           scp -i ~/.ssh/deploy_key deployment/docker-compose.yml "${VPS_USER}@${VPS_HOST}:~/hosting/command-center/docker-compose.yml"
           scp -i ~/.ssh/deploy_key deployment/remote-deploy.sh "${VPS_USER}@${VPS_HOST}:~/hosting/command-center/remote-deploy.sh"
           scp -i ~/.ssh/deploy_key .env.runtime "${VPS_USER}@${VPS_HOST}:~/hosting/command-center/.env.runtime"
-          ssh -i ~/.ssh/deploy_key "${VPS_USER}@${VPS_HOST}" "chmod +x ~/hosting/command-center/remote-deploy.sh && HOSTING_DIR=~/hosting/command-center ~/hosting/command-center/remote-deploy.sh"
+          printf '%s' "$GHCR_TOKEN" | ssh -i ~/.ssh/deploy_key "${VPS_USER}@${VPS_HOST}" \
+            "docker login ghcr.io -u '${GHCR_USER}' --password-stdin && chmod +x ~/hosting/command-center/remote-deploy.sh && HOSTING_DIR=~/hosting/command-center ~/hosting/command-center/remote-deploy.sh"
       - name: Smoke test
         if: steps.gate.outputs.ready == 'true'
         run: |
           set +e
-          code=$(curl -sS -o /tmp/cc-smoke.html -w '%{http_code}' --max-time 20 https://agent-factory.envisix.at/login || true)
-          if [ "$code" = "200" ] || [ "$code" = "302" ]; then
-            echo "Smoke test OK (HTTP $code)"
-          else
-            echo "::notice::Smoke test could not confirm https://agent-factory.envisix.at (HTTP ${code:-none}). DNS or Traefik may not be ready yet."
-          fi
+          code=000
+          for i in 1 2 3 4 5 6; do
+            code=$(curl -sS -o /tmp/cc-smoke.html -w '%{http_code}' --max-time 25 https://agent-factory.envisix.at/login || true)
+            echo "Attempt $i: HTTP $code"
+            if [ "$code" = "200" ] || [ "$code" = "302" ]; then
+              echo "smoke_http_code=$code" >> "$GITHUB_ENV"
+              echo "Smoke test OK (HTTP $code)"
+              exit 0
+            fi
+            sleep 20
+          done
+          echo "smoke_http_code=$code" >> "$GITHUB_ENV"
+          echo "::warning::Smoke test did not get 200/302 (last HTTP ${code}). Traefik/Let's Encrypt or Cloudflare origin may still be settling."
