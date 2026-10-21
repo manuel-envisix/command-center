@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { formatStatusError } from "../lib/statusError";
 
 interface GithubStatus {
   configured: boolean;
@@ -63,7 +64,9 @@ export function StatusBar({ intervalMs }: { intervalMs: number }) {
         {github?.configured && (
           <div>
             {github.error ? (
-              <span style={{ color: "var(--err)" }}>{github.error}</span>
+              <span style={{ color: "var(--err)" }}>
+                {formatStatusError(github.error, "GitHub-Status konnte nicht geladen werden.")}
+              </span>
             ) : (
               <>
                 <strong>{github.org}</strong> · {github.totalOpenPrs} offene PRs
@@ -85,7 +88,9 @@ export function StatusBar({ intervalMs }: { intervalMs: number }) {
         {cursor?.configured && (
           <div>
             {cursor.error ? (
-              <span style={{ color: "var(--err)" }}>{cursor.error}</span>
+              <span style={{ color: "var(--err)" }}>
+                {formatStatusError(cursor.error, "Cursor-Status konnte nicht geladen werden.")}
+              </span>
             ) : (
               <ul>
                 {cursor.agents.slice(0, 5).map((a, i) => (
@@ -102,7 +107,9 @@ export function StatusBar({ intervalMs }: { intervalMs: number }) {
           <h3>Grok Bot Assistenten</h3>
           <div>
             {grok?.error ? (
-              <span style={{ color: "var(--warn)" }}>{grok.error}</span>
+              <span style={{ color: "var(--warn)" }}>
+                {formatStatusError(grok.error, "Grok-Status konnte nicht geladen werden.")}
+              </span>
             ) : (
               <ul>
                 {grok?.agents.slice(0, 6).map((a) => (
