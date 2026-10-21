@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "kind": "view",
+  "id": "grok-screenshot",
+  "title": "Screenshot",
+  "blocks": [
+    {
+      "type": "image",
+      "dataUrl": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
+      "caption": "1×1 Demo-Pixel"
+    }
+  ]
+}

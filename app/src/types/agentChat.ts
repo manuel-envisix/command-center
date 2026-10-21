@@ -19,12 +19,21 @@ export interface AgentSummary {
   }>;
 }
 
+export interface AgentArtifact {
+  path: string;
+  name: string;
+  kind: "image" | "file";
+  updatedAt?: string;
+  proxyUrl: string;
+}
+
 export interface AgentChatPayload {
   kind: "agent_chat";
   agentId: string;
   updatedAt: number;
   agent: AgentSummary;
   messages: AgentChatMessage[];
+  artifacts?: AgentArtifact[];
   error?: string;
 }
 

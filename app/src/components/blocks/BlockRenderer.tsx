@@ -1,4 +1,5 @@
 import { marked } from "marked";
+import { ImageLightbox } from "../ImageLightbox";
 import type { Block } from "../../types/message";
 
 function statusClass(status?: string) {
@@ -179,7 +180,7 @@ export function BlockRenderer({
     case "image":
       return (
         <div className={cls}>
-          <img src={block.url} alt={block.alt ?? ""} style={{ maxWidth: "100%", borderRadius: 8 }} />
+          <ImageLightbox src={block.url} alt={block.alt} className="dashboard-image-thumb" />
           {block.caption && <p style={{ color: "var(--muted)" }}>{block.caption}</p>}
         </div>
       );

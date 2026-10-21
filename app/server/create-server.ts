@@ -1,6 +1,8 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
+import { InvalidUploadError, MediaStore, UploadTooLargeError } from "./media-store.js";
+import { preprocessPushMessage } from "./push-preprocess.js";
 import type { Duplex } from "node:stream";
 import { WebSocketServer } from "ws";
 import {
@@ -58,14 +60,16 @@ function sendText(res: ServerResponse, status: number, body: string, type = "tex
 function isPublicPath(pathname: string, method: string): boolean {
   if (pathname === "/health") return true;
   if (pathname === "/push" && method === "POST") return true;
+  if (pathname === "/upload" && method === "POST") return true;
   if (pathname === "/login") return true;
   if (pathname === "/api/login" && (method === "GET" || method === "POST")) return true;
   return false;
 }
 
 export async function startServer(options: CreateServerOptions) {
-  const dataDir = process.env.DATA_DIR || "";
-  const persistPath = dataDir ? join(dataDir, "relay-history.json") : null;
+  const dataDir = process.env.DATA_DIR || join(process.cwd(), ".data");
+  const persistPath = join(dataDir, "relay-history.json");
+  const mediaStore = MediaStore.fromDataDir(dataDir);
   const relay = new MessageRelay(persistPath);
   await relay.init();
   setAgentLiveService(new AgentLiveService(relay));
@@ -80,6 +84,44 @@ export async function startServer(options: CreateServerOptions) {
 
       if (pathname === "/health") {
         sendText(res, 200, JSON.stringify({ ok: true }), "application/json");
+        return;
+      }
+
+      if (pathname === "/upload" && req.method === "POST") {
+        const secret = relaySecret();
+        const provided = extractBearerSecret(req);
+        if (!isAuthorized(provided, secret)) {
+          sendText(res, 401, "Unauthorized");
+          return;
+        }
+        let payload: { contentType?: string; dataBase64?: string };
+        try {
+          payload = JSON.parse(await readBody(req)) as { contentType?: string; dataBase64?: string };
+        } catch {
+          sendText(res, 400, "Invalid JSON");
+          return;
+        }
+        const contentType = payload.contentType?.trim();
+        const dataBase64 = payload.dataBase64;
+        if (!contentType || typeof dataBase64 !== "string") {
+          sendText(res, 400, "contentType and dataBase64 required");
+          return;
+        }
+        try {
+          const saved = await mediaStore.saveBase64(contentType, dataBase64);
+          res.setHeader("Content-Type", "application/json");
+          res.end(JSON.stringify({ ok: true, url: saved.url, filename: saved.filename }));
+        } catch (err) {
+          if (err instanceof UploadTooLargeError) {
+            sendText(res, 413, err.message);
+            return;
+          }
+          if (err instanceof InvalidUploadError) {
+            sendText(res, 400, err.message);
+            return;
+          }
+          throw err;
+        }
         return;
       }
 
@@ -101,9 +143,41 @@ export async function startServer(options: CreateServerOptions) {
           sendText(res, 400, "Message must be a JSON object");
           return;
         }
+        try {
+          body = await preprocessPushMessage(body, mediaStore);
+        } catch (err) {
+          if (err instanceof UploadTooLargeError) {
+            sendText(res, 413, err.message);
+            return;
+          }
+          if (err instanceof InvalidUploadError) {
+            sendText(res, 400, err.message);
+            return;
+          }
+          throw err;
+        }
         const stored = relay.push(body);
         res.setHeader("Content-Type", "application/json");
         res.end(JSON.stringify({ ok: true, seq: stored._seq }));
+        return;
+      }
+
+      const mediaMatch = pathname.match(/^\/media\/uploads\/([^/]+)$/);
+      if (mediaMatch && req.method === "GET") {
+        if (!isAuthenticated(req)) {
+          redirect(res, "/login");
+          return;
+        }
+        try {
+          const { buffer, contentType } = await mediaStore.readUpload(mediaMatch[1]);
+          res.statusCode = 200;
+          res.setHeader("Content-Type", contentType);
+          res.setHeader("Cache-Control", "private, max-age=86400");
+          res.end(buffer);
+        } catch {
+          res.statusCode = 404;
+          res.end("Not Found");
+        }
         return;
       }
 
