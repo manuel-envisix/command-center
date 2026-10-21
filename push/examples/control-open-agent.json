@@ -1,0 +1,8 @@
+{
+  "version": 1,
+  "kind": "control",
+  "control": {
+    "action": "openAgent",
+    "agentId": "bc-539eaa0e-7c93-54f6-a803-7dc9e58fc5e1"
+  }
+}

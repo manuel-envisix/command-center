@@ -1,0 +1,19 @@
+{
+  "name": "command-center",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Live-Dashboard für Grok Bot, Cursor Cloud Agents und GitHub",
+  "workspaces": [
+    "app",
+    "push"
+  ],
+  "scripts": {
+    "start": "npm run start -w app",
+    "build": "npm run build -w app",
+    "test": "npm run test -w app",
+    "typecheck": "npm run typecheck -w app"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

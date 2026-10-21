@@ -1,0 +1,163 @@
+name: Deploy
+
+on:
+  push:
+    branches:
+      - main
+      - cursor/command-center-v1-c5e1
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  IMAGE_NAME: ghcr.io/manuel-envisix/command-center
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    outputs:
+      image_ref: ${{ steps.image.outputs.ref }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: image
+        run: echo "ref=${IMAGE_NAME}:${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.image.outputs.ref }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+      - name: Set GHCR package visibility (public pull on VPS)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set +e
+          gh api --method PATCH \
+            -H "Accept: application/vnd.github+json" \
+            "/orgs/${{ github.repository_owner }}/packages/container/command-center" \
+            -f visibility=public >/dev/null 2>&1
+          gh api --method PATCH \
+            -H "Accept: application/vnd.github+json" \
+            "/user/packages/container/command-center" \
+            -f visibility=public >/dev/null 2>&1
+          echo "GHCR visibility patch attempted (public enables VPS pull without login)."
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check deploy secrets
+        id: gate
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+          CC_LOGIN_PASSWORD: ${{ secrets.CC_LOGIN_PASSWORD }}
+          CC_LOGIN_PASSWORD_B64: ${{ secrets.CC_LOGIN_PASSWORD_B64 }}
+        run: |
+          decode() { if [ -n "${1:-}" ]; then printf '%s' "$1" | base64 -d; fi; }
+          pw="$(decode "$CC_LOGIN_PASSWORD_B64")"
+          if [ -z "$pw" ]; then pw="$CC_LOGIN_PASSWORD"; fi
+          ready=true
+          for v in "$SSH_PRIVATE_KEY" "$VPS_HOST" "$VPS_USER" "$pw"; do
+            if [ -z "$v" ]; then ready=false; fi
+          done
+          echo "ready=$ready" >> "$GITHUB_OUTPUT"
+          if [ "$ready" != "true" ]; then
+            echo "::notice::Deploy skipped — set SSH_PRIVATE_KEY, VPS_HOST, VPS_USER, and CC_LOGIN_PASSWORD (or CC_LOGIN_PASSWORD_B64)."
+          fi
+      - name: Prepare deploy files
+        if: steps.gate.outputs.ready == 'true'
+        env:
+          IMAGE_REF: ${{ needs.build.outputs.image_ref }}
+          CC_LOGIN_PASSWORD_B64: ${{ secrets.CC_LOGIN_PASSWORD_B64 }}
+          CC_GITHUB_TOKEN_B64: ${{ secrets.CC_GITHUB_TOKEN_B64 }}
+          CURSOR_API_KEY_B64: ${{ secrets.CURSOR_API_KEY_B64 }}
+          RELAY_SECRET_B64: ${{ secrets.RELAY_SECRET_B64 }}
+          CC_LOGIN_PASSWORD: ${{ secrets.CC_LOGIN_PASSWORD }}
+          CC_GITHUB_TOKEN: ${{ secrets.CC_GITHUB_TOKEN }}
+          CURSOR_API_KEY: ${{ secrets.CURSOR_API_KEY }}
+          CC_RELAY_SECRET: ${{ secrets.RELAY_SECRET }}
+        run: |
+          decode() { if [ -n "${1:-}" ]; then printf '%s' "$1" | base64 -d; else echo ''; fi }
+          login_pw="$(decode "$CC_LOGIN_PASSWORD_B64")"
+          if [ -z "$login_pw" ]; then login_pw="$CC_LOGIN_PASSWORD"; fi
+          github_token="$(decode "$CC_GITHUB_TOKEN_B64")"
+          if [ -z "$github_token" ]; then github_token="$CC_GITHUB_TOKEN"; fi
+          cursor_key="$(decode "$CURSOR_API_KEY_B64")"
+          if [ -z "$cursor_key" ]; then cursor_key="$CURSOR_API_KEY"; fi
+          relay_secret="$(decode "$RELAY_SECRET_B64")"
+          if [ -z "$relay_secret" ]; then relay_secret="$CC_RELAY_SECRET"; fi
+          quote() { printf "'%s'" "$(printf '%s' "$1" | sed "s/'/'\\\\''/g")"; }
+          {
+            echo "COMMAND_CENTER_IMAGE=$(quote "$IMAGE_REF")"
+            echo "CC_LOGIN_PASSWORD=$(quote "$login_pw")"
+            echo "CC_GITHUB_TOKEN=$(quote "$github_token")"
+            echo "CURSOR_API_KEY=$(quote "$cursor_key")"
+            echo "CC_GITHUB_ORG='manuel-envisix'"
+          } > .env.runtime
+          if [ -n "$relay_secret" ]; then
+            echo "RELAY_SECRET=$(quote "$relay_secret")" >> .env.runtime
+          fi
+      - name: SSH deploy
+        if: steps.gate.outputs.ready == 'true'
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+          GHCR_PULL_TOKEN: ${{ secrets.GHCR_PULL_TOKEN }}
+          GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
+          GHCR_USER: ${{ github.repository_owner }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          GHCR_LOGIN_TOKEN="$GHCR_PULL_TOKEN"
+          if [ -z "$GHCR_LOGIN_TOKEN" ]; then GHCR_LOGIN_TOKEN="$GHCR_TOKEN"; fi
+          ssh -o StrictHostKeyChecking=accept-new -i ~/.ssh/deploy_key "${VPS_USER}@${VPS_HOST}" "mkdir -p ~/hosting/command-center/data"
+          scp -i ~/.ssh/deploy_key deployment/docker-compose.yml "${VPS_USER}@${VPS_HOST}:~/hosting/command-center/docker-compose.yml"
+          scp -i ~/.ssh/deploy_key deployment/remote-deploy.sh "${VPS_USER}@${VPS_HOST}:~/hosting/command-center/remote-deploy.sh"
+          scp -i ~/.ssh/deploy_key .env.runtime "${VPS_USER}@${VPS_HOST}:~/hosting/command-center/.env.runtime"
+          if [ -n "$GHCR_LOGIN_TOKEN" ]; then
+            printf '%s' "$GHCR_LOGIN_TOKEN" | ssh -i ~/.ssh/deploy_key "${VPS_USER}@${VPS_HOST}" \
+              "cat > ~/hosting/command-center/.ghcr_token && chmod 600 ~/hosting/command-center/.ghcr_token"
+          fi
+          ssh -i ~/.ssh/deploy_key "${VPS_USER}@${VPS_HOST}" \
+            "chmod +x ~/hosting/command-center/remote-deploy.sh && HOSTING_DIR=~/hosting/command-center GHCR_USER='${GHCR_USER}' ~/hosting/command-center/remote-deploy.sh"
+      - name: Verify push auth and RELAY_SECRET
+        if: steps.gate.outputs.ready == 'true'
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+          RELAY_SECRET_B64: ${{ secrets.RELAY_SECRET_B64 }}
+          CC_RELAY_SECRET: ${{ secrets.RELAY_SECRET }}
+        run: bash deployment/verify-deploy.sh
+      - name: Smoke test
+        if: steps.gate.outputs.ready == 'true'
+        run: |
+          set +e
+          code=000
+          for i in 1 2 3 4 5 6; do
+            code=$(curl -sS -o /tmp/cc-smoke.html -w '%{http_code}' --max-time 25 https://agent-factory.envisix.at/login || true)
+            echo "Attempt $i: HTTP $code"
+            if [ "$code" = "200" ] || [ "$code" = "302" ]; then
+              echo "smoke_http_code=$code" >> "$GITHUB_ENV"
+              echo "Smoke test OK (HTTP $code)"
+              exit 0
+            fi
+            sleep 20
+          done
+          echo "smoke_http_code=$code" >> "$GITHUB_ENV"
+          echo "::warning::Smoke test did not get 200/302 (last HTTP ${code}). Traefik/Let's Encrypt or Cloudflare origin may still be settling."

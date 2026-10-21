@@ -1,0 +1,13 @@
+{
+  "github": {
+    "token": "ghp_EXAMPLE_REPLACE_WITH_YOUR_TOKEN",
+    "org": "manuel-envisix"
+  },
+  "cursor": {
+    "apiKey": "key_EXAMPLE_REPLACE_WITH_CURSOR_API_KEY"
+  },
+  "grokBot": {
+    "agentsPath": "/absolute/path/to/your/grok-bot-checkout/AgentOS/agents"
+  },
+  "statusPollIntervalMs": 60000
+}

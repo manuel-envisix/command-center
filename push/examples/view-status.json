@@ -1,0 +1,36 @@
+{
+  "version": 1,
+  "kind": "view",
+  "id": "example-status-001",
+  "title": "Tagesübersicht",
+  "blocks": [
+    {
+      "type": "markdown",
+      "content": "## Guten Abend, Manuel\n\nDies ist eine **Testansicht** vom Command Center."
+    },
+    {
+      "type": "cards",
+      "items": [
+        {
+          "title": "GitHub",
+          "status": "ok",
+          "body": "3 offene PRs in manuel-envisix",
+          "links": [{ "label": "Organisation", "href": "https://github.com/manuel-envisix" }]
+        },
+        {
+          "title": "Cursor Agent",
+          "status": "running",
+          "body": "Agent arbeitet an command-center"
+        }
+      ]
+    },
+    {
+      "type": "checklist",
+      "title": "Heute",
+      "items": [
+        { "label": "Relay deployen", "checked": true },
+        { "label": "Dashboard testen", "checked": false }
+      ]
+    }
+  ]
+}

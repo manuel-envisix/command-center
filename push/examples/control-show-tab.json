@@ -1,0 +1,8 @@
+{
+  "version": 1,
+  "kind": "control",
+  "control": {
+    "action": "showTab",
+    "tab": "agents"
+  }
+}
