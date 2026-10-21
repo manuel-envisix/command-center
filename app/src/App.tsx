@@ -2,6 +2,7 @@ import { useCallback, useMemo, useState } from "react";
 import { BlockRenderer } from "./components/blocks/BlockRenderer";
 import { StatusBar } from "./components/StatusBar";
 import { useRelay } from "./hooks/useRelay";
+import { upsertViewInHistory } from "./lib/viewHistory";
 import {
   type DashboardMessage,
   isViewMessage,
@@ -49,9 +50,11 @@ export default function App() {
 
     if (isViewMessage(msg)) {
       setViews((prev) => {
-        const next = [...prev, msg];
-        setCursor(next.length - 1);
-        return next;
+        const { views, isNew } = upsertViewInHistory(prev, msg);
+        if (isNew) {
+          setCursor(views.length - 1);
+        }
+        return views;
       });
       if (msg.title) setTitle(msg.title);
       setHighlightIndex(null);
