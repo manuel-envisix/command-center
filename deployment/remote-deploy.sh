@@ -25,7 +25,12 @@ for key in RELAY_SECRET SESSION_SECRET; do
 done
 
 read_image() {
-  awk -F= '/^COMMAND_CENTER_IMAGE=/{ $1=""; sub(/^=/,""); gsub(/^[\x27"]|[\x27"]$/,""); print; exit }' .env.runtime
+  local line val
+  line="$(grep '^COMMAND_CENTER_IMAGE=' .env.runtime | head -n1)"
+  val="${line#COMMAND_CENTER_IMAGE=}"
+  val="${val#\'}"; val="${val%\'}"
+  val="${val#\"}"; val="${val%\"}"
+  printf '%s' "$val"
 }
 
 export COMMAND_CENTER_IMAGE="$(read_image)"
