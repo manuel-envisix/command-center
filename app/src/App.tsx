@@ -1,8 +1,9 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { AgentsTab } from "./components/AgentsTab";
 import { BlockRenderer } from "./components/blocks/BlockRenderer";
 import { StatusBar } from "./components/StatusBar";
 import { useRelay } from "./hooks/useRelay";
+import { findViewIndex } from "./lib/controlActions";
 import { upsertViewInHistory } from "./lib/viewHistory";
 import type { AgentChatPayload } from "./types/agentChat";
 import {
@@ -31,6 +32,9 @@ export default function App() {
   const [highlightIndex, setHighlightIndex] = useState<number | null>(null);
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [agentChats, setAgentChats] = useState<Record<string, AgentChatPayload>>({});
+  const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
+  const viewsRef = useRef(views);
+  viewsRef.current = views;
 
   const handleMessage = useCallback((msg: DashboardMessage) => {
     if (msg.kind === "control" && msg.control) {
@@ -50,6 +54,22 @@ export default function App() {
         setTimeout(() => {
           setToasts((t) => t.filter((x) => x.id !== id));
         }, duration);
+      } else if (c.action === "showTab") {
+        setMainTab(c.tab === "views" ? "dashboard" : "agents");
+      } else if (c.action === "openAgent") {
+        setMainTab("agents");
+        setSelectedAgentId(c.agentId);
+      } else if (c.action === "showView") {
+        setMainTab("dashboard");
+        const idx = findViewIndex(viewsRef.current, c.id);
+        if (idx >= 0) setCursor(idx);
+      } else if (c.action === "back") {
+        setMainTab("dashboard");
+        setCursor((cur) => (cur > 0 ? cur - 1 : cur));
+      } else if (c.action === "forward") {
+        setMainTab("dashboard");
+        const len = viewsRef.current.length;
+        setCursor((cur) => (cur >= 0 && cur < len - 1 ? cur + 1 : cur));
       }
       return;
     }
@@ -133,6 +153,8 @@ export default function App() {
         <AgentsTab
           liveByAgentId={agentChats}
           embedAllowed={Boolean(publicConfig?.cursorAgentEmbedAllowed)}
+          selectedAgentId={selectedAgentId}
+          onSelectedAgentIdChange={setSelectedAgentId}
         />
       ) : (
         <div className="main-layout">

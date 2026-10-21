@@ -175,6 +175,43 @@ Für Sonderfälle: Inhalt wird in einem **sandboxed** `iframe` (`srcdoc`, ohne R
 | `setTitle` | `title` | Fenstertitel setzen |
 | `focus` / `highlight` | `blockIndex` oder `blockId` | Block hervorheben |
 | `notify` | `message`, optional `level`, `durationMs` | Toast (`info`, `success`, `warning`, `error`) |
+| `showTab` | `tab`: `"views"` oder `"agents"` | Hauptreiter wechseln (`views` = Dashboard/Verlauf) |
+| `openAgent` | `agentId` (z. B. `bc-…`) | Reiter Agents + Live-Chat dieses Cloud Agents |
+| `showView` | `id` | Im Verlauf zur Ansicht springen (`id` oder `_seq` als String) |
+| `back` | — | Eine Ansicht zurück im Verlauf |
+| `forward` | — | Eine Ansicht vor im Verlauf |
+
+Alle Steuerungsnachrichten werden über WebSocket an **alle** verbundenen Clients gebroadcastet; jeder Client führt die Aktion sofort aus (z. B. Sprachbefehl vom Chief of Staff über `POST /push`).
+
+### Beispiele: Navigation per Sprache
+
+```json
+{ "version": 1, "kind": "control", "control": { "action": "showTab", "tab": "views" } }
+```
+
+```json
+{ "version": 1, "kind": "control", "control": { "action": "showTab", "tab": "agents" } }
+```
+
+```json
+{
+  "version": 1,
+  "kind": "control",
+  "control": { "action": "openAgent", "agentId": "bc-539eaa0e-7c93-54f6-a803-7dc9e58fc5e1" }
+}
+```
+
+```json
+{ "version": 1, "kind": "control", "control": { "action": "showView", "id": "daily-brief" } }
+```
+
+```json
+{ "version": 1, "kind": "control", "control": { "action": "back" } }
+```
+
+```json
+{ "version": 1, "kind": "control", "control": { "action": "forward" } }
+```
 
 ## Beispiel: komplette View pushen
 

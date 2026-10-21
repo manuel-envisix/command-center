@@ -1,3 +1,5 @@
+import { normalizeControlAction } from "../lib/controlActions";
+
 export const MESSAGE_VERSION = 1;
 
 export type LinkItem = { label: string; href: string };
@@ -54,7 +56,12 @@ export type ControlAction =
       level?: "info" | "success" | "warning" | "error";
       durationMs?: number;
     }
-  | { action: "highlight"; blockIndex?: number; blockId?: string };
+  | { action: "highlight"; blockIndex?: number; blockId?: string }
+  | { action: "showTab"; tab: "views" | "agents" }
+  | { action: "openAgent"; agentId: string }
+  | { action: "showView"; id: string }
+  | { action: "back" }
+  | { action: "forward" };
 
 export interface DashboardMessage {
   version?: number;
@@ -194,5 +201,11 @@ export function parseIncomingMessage(raw: unknown): DashboardMessage | null {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
   const msg = raw as DashboardMessage;
   if (msg.kind !== "view" && msg.kind !== "control") return null;
+  if (msg.kind === "control") {
+    if (!msg.control) return null;
+    const normalized = normalizeControlAction(msg.control);
+    if (!normalized) return null;
+    return { ...msg, control: normalized };
+  }
   return msg;
 }

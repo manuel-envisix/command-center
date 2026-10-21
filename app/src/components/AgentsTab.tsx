@@ -5,6 +5,8 @@ import type { AgentChatPayload, AgentSummary } from "../types/agentChat";
 interface AgentsTabProps {
   liveByAgentId: Record<string, AgentChatPayload>;
   embedAllowed: boolean;
+  selectedAgentId: string | null;
+  onSelectedAgentIdChange: (id: string | null) => void;
 }
 
 function repoLabel(agent: AgentSummary): string {
@@ -19,11 +21,16 @@ function prLink(agent: AgentSummary): string | null {
   return agent.repos?.find((r) => r.prUrl)?.prUrl ?? null;
 }
 
-export function AgentsTab({ liveByAgentId, embedAllowed }: AgentsTabProps) {
+export function AgentsTab({
+  liveByAgentId,
+  embedAllowed,
+  selectedAgentId,
+  onSelectedAgentIdChange,
+}: AgentsTabProps) {
   const [agents, setAgents] = useState<AgentSummary[]>([]);
   const [configured, setConfigured] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const selectedId = selectedAgentId;
   const [followUp, setFollowUp] = useState("");
   const [confirmSend, setConfirmSend] = useState(false);
   const [sending, setSending] = useState(false);
@@ -60,8 +67,8 @@ export function AgentsTab({ liveByAgentId, embedAllowed }: AgentsTabProps) {
     };
   }, [selectedId]);
 
-  const openAgent = (id: string) => setSelectedId(id);
-  const closeAgent = () => setSelectedId(null);
+  const openAgent = (id: string) => onSelectedAgentIdChange(id);
+  const closeAgent = () => onSelectedAgentIdChange(null);
 
   const sendFollowUp = async () => {
     if (!selectedId || !followUp.trim() || !confirmSend) return;
@@ -93,9 +100,14 @@ export function AgentsTab({ liveByAgentId, embedAllowed }: AgentsTabProps) {
     );
   }
 
-  if (selectedId && selectedMeta) {
-    const cursorUrl = selectedMeta.url ?? `https://cursor.com/agents/${selectedId}`;
-    const pr = prLink(selectedMeta);
+  if (selectedId) {
+    const detail = selectedMeta ?? {
+      id: selectedId,
+      name: selectedId,
+      status: "…",
+    };
+    const cursorUrl = detail.url ?? `https://cursor.com/agents/${selectedId}`;
+    const pr = prLink(detail);
     return (
       <div className="agents-detail">
         <button type="button" className="agents-back" onClick={closeAgent}>
@@ -103,9 +115,9 @@ export function AgentsTab({ liveByAgentId, embedAllowed }: AgentsTabProps) {
         </button>
         <header className="agents-detail-header">
           <div>
-            <h2>{selectedMeta.name}</h2>
+            <h2>{detail.name}</h2>
             <p className="agents-meta">
-              {selectedMeta.status} · {repoLabel(selectedMeta)}
+              {detail.status} · {repoLabel(detail)}
             </p>
           </div>
           <div className="agents-detail-actions">

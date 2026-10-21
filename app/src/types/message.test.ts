@@ -26,4 +26,25 @@ describe("message schema", () => {
     expect(parseIncomingMessage({ kind: "nope" })).toBeNull();
     expect(parseIncomingMessage(null)).toBeNull();
   });
+
+  it("parses and normalizes control messages", () => {
+    const msg = parseIncomingMessage({
+      version: 1,
+      kind: "control",
+      control: { action: "showTab", tab: "views" },
+    });
+    expect(msg?.control).toEqual({ action: "showTab", tab: "views" });
+
+    expect(
+      parseIncomingMessage({
+        kind: "control",
+        control: { action: "openAgent", agentId: "bc-1" },
+      })?.control,
+    ).toEqual({ action: "openAgent", agentId: "bc-1" });
+
+    expect(
+      parseIncomingMessage({ kind: "control", control: { action: "nope" } }),
+    ).toBeNull();
+    expect(parseIncomingMessage({ kind: "control" })).toBeNull();
+  });
 });
