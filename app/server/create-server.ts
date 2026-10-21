@@ -15,6 +15,8 @@ import {
 } from "./auth.js";
 import { handleApi } from "./api.js";
 import { loginPageHtml } from "./login-page.js";
+import { AgentLiveService } from "./agent-live.js";
+import { setAgentLiveService } from "./agent-live-registry.js";
 import { MessageRelay } from "./relay.js";
 import { extractBearerSecret, isAuthorized } from "./relay-auth.js";
 import { relaySecret } from "./config.js";
@@ -66,6 +68,7 @@ export async function startServer(options: CreateServerOptions) {
   const persistPath = dataDir ? join(dataDir, "relay-history.json") : null;
   const relay = new MessageRelay(persistPath);
   await relay.init();
+  setAgentLiveService(new AgentLiveService(relay));
 
   const wss = new WebSocketServer({ noServer: true });
   const secure = options.secureCookies ?? process.env.NODE_ENV === "production";

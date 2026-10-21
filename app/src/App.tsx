@@ -1,8 +1,10 @@
 import { useCallback, useMemo, useState } from "react";
+import { AgentsTab } from "./components/AgentsTab";
 import { BlockRenderer } from "./components/blocks/BlockRenderer";
 import { StatusBar } from "./components/StatusBar";
 import { useRelay } from "./hooks/useRelay";
 import { upsertViewInHistory } from "./lib/viewHistory";
+import type { AgentChatPayload } from "./types/agentChat";
 import {
   type DashboardMessage,
   isViewMessage,
@@ -15,16 +17,20 @@ interface Toast {
   level: "info" | "success" | "warning" | "error";
 }
 
+type MainTab = "dashboard" | "agents";
+
 function viewKey(msg: DashboardMessage, index: number) {
   return msg.id ?? `view-${msg._seq ?? index}`;
 }
 
 export default function App() {
+  const [mainTab, setMainTab] = useState<MainTab>("dashboard");
   const [title, setTitle] = useState("Command Center");
   const [views, setViews] = useState<DashboardMessage[]>([]);
   const [cursor, setCursor] = useState(-1);
   const [highlightIndex, setHighlightIndex] = useState<number | null>(null);
   const [toasts, setToasts] = useState<Toast[]>([]);
+  const [agentChats, setAgentChats] = useState<Record<string, AgentChatPayload>>({});
 
   const handleMessage = useCallback((msg: DashboardMessage) => {
     if (msg.kind === "control" && msg.control) {
@@ -61,7 +67,14 @@ export default function App() {
     }
   }, []);
 
-  const { connected, publicConfig } = useRelay(handleMessage);
+  const handleAgentChat = useCallback((payload: AgentChatPayload) => {
+    setAgentChats((prev) => ({ ...prev, [payload.agentId]: payload }));
+  }, []);
+
+  const { connected, publicConfig } = useRelay({
+    onDashboardMessage: handleMessage,
+    onAgentChat: handleAgentChat,
+  });
 
   const current = cursor >= 0 ? views[cursor] : null;
   const blocks = useMemo(() => {
@@ -71,20 +84,43 @@ export default function App() {
 
   const canBack = cursor > 0;
   const canForward = cursor >= 0 && cursor < views.length - 1;
+  const agentsEnabled = publicConfig?.cursorAgentsEnabled ?? false;
 
   return (
     <div className="app-shell">
       <header className="top-bar">
         <h1>{title}</h1>
+        <nav className="main-tabs" aria-label="Hauptnavigation">
+          <button
+            type="button"
+            className={mainTab === "dashboard" ? "active" : ""}
+            onClick={() => setMainTab("dashboard")}
+          >
+            Dashboard
+          </button>
+          {agentsEnabled && (
+            <button
+              type="button"
+              className={mainTab === "agents" ? "active" : ""}
+              onClick={() => setMainTab("agents")}
+            >
+              Agents
+            </button>
+          )}
+        </nav>
         <span className={`conn-pill ${connected ? "ok" : "bad"}`}>
           {connected ? "Live verbunden" : "Getrennt"}
         </span>
-        <button type="button" disabled={!canBack} onClick={() => setCursor((c) => c - 1)}>
-          Zurück
-        </button>
-        <button type="button" disabled={!canForward} onClick={() => setCursor((c) => c + 1)}>
-          Vorwärts
-        </button>
+        {mainTab === "dashboard" && (
+          <>
+            <button type="button" disabled={!canBack} onClick={() => setCursor((c) => c - 1)}>
+              Zurück
+            </button>
+            <button type="button" disabled={!canForward} onClick={() => setCursor((c) => c + 1)}>
+              Vorwärts
+            </button>
+          </>
+        )}
       </header>
 
       <div className="toast-stack" aria-live="polite">
@@ -93,37 +129,48 @@ export default function App() {
         ))}
       </div>
 
-      <div className="main-layout">
-        <aside className="history-panel">
-          <h2>Verlauf</h2>
-          {views.length === 0 && <p style={{ color: "var(--muted)", fontSize: 14 }}>Noch keine Ansichten.</p>}
-          {views.map((v, i) => (
-            <button
-              key={viewKey(v, i)}
-              type="button"
-              className={`history-item${i === cursor ? " active" : ""}`}
-              onClick={() => setCursor(i)}
-            >
-              {v.title ?? `Ansicht ${i + 1}`}
-              <small>{v.ts ? new Date(v.ts).toLocaleString("de-AT") : `#${v._seq ?? i + 1}`}</small>
-            </button>
-          ))}
-        </aside>
+      {mainTab === "agents" ? (
+        <AgentsTab
+          liveByAgentId={agentChats}
+          embedAllowed={Boolean(publicConfig?.cursorAgentEmbedAllowed)}
+        />
+      ) : (
+        <div className="main-layout">
+          <aside className="history-panel">
+            <h2>Verlauf</h2>
+            {views.length === 0 && (
+              <p style={{ color: "var(--muted)", fontSize: 14 }}>Noch keine Ansichten.</p>
+            )}
+            {views.map((v, i) => (
+              <button
+                key={viewKey(v, i)}
+                type="button"
+                className={`history-item${i === cursor ? " active" : ""}`}
+                onClick={() => setCursor(i)}
+              >
+                {v.title ?? `Ansicht ${i + 1}`}
+                <small>
+                  {v.ts ? new Date(v.ts).toLocaleString("de-AT") : `#${v._seq ?? i + 1}`}
+                </small>
+              </button>
+            ))}
+          </aside>
 
-        <main className="stage">
-          {!current && (
-            <div className="stage-empty">
-              <p>Warte auf Live-Ansichten vom Chief of Staff …</p>
-              <p style={{ fontSize: 14 }}>
-                Push: {publicConfig?.relay.pushConfigured ? "bereit" : "RELAY_SECRET fehlt"}
-              </p>
-            </div>
-          )}
-          {blocks.map((block, i) => (
-            <BlockRenderer key={i} block={block} highlighted={highlightIndex === i} />
-          ))}
-        </main>
-      </div>
+          <main className="stage">
+            {!current && (
+              <div className="stage-empty">
+                <p>Warte auf Live-Ansichten vom Chief of Staff …</p>
+                <p style={{ fontSize: 14 }}>
+                  Push: {publicConfig?.relay.pushConfigured ? "bereit" : "RELAY_SECRET fehlt"}
+                </p>
+              </div>
+            )}
+            {blocks.map((block, i) => (
+              <BlockRenderer key={i} block={block} highlighted={highlightIndex === i} />
+            ))}
+          </main>
+        </div>
+      )}
 
       <StatusBar intervalMs={publicConfig?.statusPollIntervalMs ?? 60_000} />
     </div>

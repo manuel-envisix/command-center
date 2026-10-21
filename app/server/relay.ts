@@ -41,6 +41,15 @@ export class MessageRelay {
     }
   }
 
+  broadcast(body: StoredMessage): void {
+    const payload = JSON.stringify(body);
+    for (const client of this.clients) {
+      if (client.readyState === client.OPEN) {
+        client.send(payload);
+      }
+    }
+  }
+
   push(body: StoredMessage): StoredMessage {
     const seq = (this.history.at(-1)?._seq ?? 0) + 1;
     const stored: StoredMessage = {

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { parseAgentChatPayload, type AgentChatPayload } from "../types/agentChat";
 import type { DashboardMessage } from "../types/message";
 import { parseIncomingMessage } from "../types/message";
 
@@ -6,6 +7,8 @@ interface PublicConfig {
   relay: { sameOrigin: boolean; pushConfigured: boolean };
   statusPollIntervalMs: number;
   loginRequired?: boolean;
+  cursorAgentsEnabled?: boolean;
+  cursorAgentEmbedAllowed?: boolean;
 }
 
 function wsUrl(): string {
@@ -13,12 +16,19 @@ function wsUrl(): string {
   return `${proto}//${window.location.host}/ws`;
 }
 
-export function useRelay(onMessage: (msg: DashboardMessage) => void) {
+interface RelayHandlers {
+  onDashboardMessage: (msg: DashboardMessage) => void;
+  onAgentChat?: (msg: AgentChatPayload) => void;
+}
+
+export function useRelay({ onDashboardMessage, onAgentChat }: RelayHandlers) {
   const [connected, setConnected] = useState(false);
   const [publicConfig, setPublicConfig] = useState<PublicConfig | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
-  const onMessageRef = useRef(onMessage);
-  onMessageRef.current = onMessage;
+  const onDashboardRef = useRef(onDashboardMessage);
+  const onAgentChatRef = useRef(onAgentChat);
+  onDashboardRef.current = onDashboardMessage;
+  onAgentChatRef.current = onAgentChat;
 
   const connect = useCallback(async () => {
     const res = await fetch("/api/config/public");
@@ -40,8 +50,14 @@ export function useRelay(onMessage: (msg: DashboardMessage) => void) {
     socket.onerror = () => setConnected(false);
     socket.onmessage = (ev) => {
       try {
-        const parsed = parseIncomingMessage(JSON.parse(String(ev.data)));
-        if (parsed) onMessageRef.current(parsed);
+        const raw = JSON.parse(String(ev.data));
+        const agentChat = parseAgentChatPayload(raw);
+        if (agentChat) {
+          onAgentChatRef.current?.(agentChat);
+          return;
+        }
+        const parsed = parseIncomingMessage(raw);
+        if (parsed) onDashboardRef.current(parsed);
       } catch {
         // Ignorieren.
       }

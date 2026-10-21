@@ -72,5 +72,7 @@ export function publicConfig(config: AppConfig) {
     },
     statusPollIntervalMs: config.statusPollIntervalMs ?? 60_000,
     loginRequired: Boolean(process.env.CC_LOGIN_PASSWORD?.length),
+    cursorAgentsEnabled: Boolean(config.cursor?.apiKey),
+    cursorAgentEmbedAllowed: false,
   };
 }
